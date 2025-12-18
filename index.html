@@ -21,24 +21,22 @@
         .btn {
             padding: 12px 25px; font-size: 14px; color: #fff; background: rgba(255,255,255,0.05);
             border: 2px solid white; cursor: pointer; transition: 0.3s; text-transform: uppercase; margin: 5px;
-            border-radius: 4px;
+            border-radius: 4px; position: relative; z-index: 20;
         }
 
         .btn:hover { background: white; color: black; }
         .btn.active { background: var(--theme-color); color: #000; border-color: var(--theme-color); box-shadow: 0 0 15px var(--theme-color); }
 
-        /* Интерфейс редактора */
         #editor-ui {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
             display: none; gap: 5px; background: rgba(0,0,0,0.85); padding: 12px; 
             border-radius: 50px; border: 1px solid rgba(255,255,255,0.2); align-items: center;
-            flex-wrap: wrap; justify-content: center; width: 90%; max-width: 600px;
+            flex-wrap: wrap; justify-content: center; width: 90%; max-width: 600px; z-index: 30;
         }
 
-        /* Кнопки навигации для мобильного редактора */
         #mobile-nav {
             position: absolute; top: 50%; width: 100%; display: none; justify-content: space-between;
-            padding: 0 20px; box-sizing: border-box; pointer-events: none; transform: translateY(-50%);
+            padding: 0 20px; box-sizing: border-box; pointer-events: none; transform: translateY(-50%); z-index: 25;
         }
         .nav-btn {
             width: 70px; height: 70px; background: rgba(255,255,255,0.1); border: 2px solid white;
@@ -46,9 +44,8 @@
             align-items: center; justify-content: center;
         }
 
-        #ui { position: absolute; top: 20px; left: 20px; color: white; font-size: 24px; display: none; }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; font-size: 24px; display: none; z-index: 15; }
         
-        /* Настройки мобильного режима */
         .mobile-mode-active .btn { padding: 20px 40px; font-size: 18px; }
         .mobile-mode-active h1 { font-size: 50px; }
     </style>
@@ -64,15 +61,15 @@
         
         <div style="margin-bottom: 20px; text-align: center;">
             <p style="color:white; font-size:12px; margin-bottom:5px;">ЦВЕТ:</p>
-            <input type="color" id="waveColor" value="#00fff2" style="width:50px; height:50px; border:none; background:none;">
+            <input type="color" id="waveColor" value="#00fff2" style="width:50px; height:50px; border:none; background:none; cursor: pointer;">
         </div>
 
         <div style="display:flex; flex-wrap: wrap; justify-content: center;">
-            <button class="btn" onclick="startGame(false)">Random</button>
-            <button class="btn" onclick="startEditor()">Editor</button>
-            <button id="mobileToggle" class="btn" onclick="toggleMobileMode()" style="border-color: #ffcc00;">Mobile: OFF</button>
+            <button class="btn" onpointerdown="startGame(false)">Random</button>
+            <button class="btn" onpointerdown="startEditor()">Editor</button>
+            <button id="mobileToggle" class="btn" onpointerdown="toggleMobileMode()" style="border-color: #ffcc00;">Mobile: OFF</button>
         </div>
-        <button id="playCustomBtn" class="btn" style="display:none; border-color:#ffcc00; color:#ffcc00; margin-top:15px;" onclick="startGame(true)">Play My Level</button>
+        <button id="playCustomBtn" class="btn" style="display:none; border-color:#ffcc00; color:#ffcc00; margin-top:15px;" onpointerdown="startGame(true)">Play My Level</button>
     </div>
 
     <div id="mobile-nav">
@@ -81,11 +78,11 @@
     </div>
 
     <div id="editor-ui">
-        <button id="tool-block" class="btn active" onclick="setTool('block')">Block</button>
-        <button id="tool-finish" class="btn" onclick="setTool('finish')">Finish</button>
-        <button id="tool-eraser" class="btn" style="border-color: #ff5555;" onclick="setTool('eraser')">Eraser</button>
-        <button class="btn" onclick="undoLast()">Undo</button>
-        <button class="btn" onclick="exitEditor()" style="background: green;">Save</button>
+        <button id="tool-block" class="btn active" onpointerdown="setTool('block')">Block</button>
+        <button id="tool-finish" class="btn" onpointerdown="setTool('finish')">Finish</button>
+        <button id="tool-eraser" class="btn" style="border-color: #ff5555;" onpointerdown="setTool('eraser')">Eraser</button>
+        <button class="btn" onpointerdown="undoLast()">Undo</button>
+        <button class="btn" onpointerdown="exitEditor()" style="background: green;">Save</button>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -156,8 +153,9 @@
             if (finishLineX && Math.abs(worldX - finishLineX) < 40) finishLineX = null;
         }
 
-        // Обработка кликов/тапов
         const handleDown = (e) => {
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+            
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
             const isRightClick = e.button === 2;
@@ -177,7 +175,7 @@
         };
 
         window.addEventListener('mousedown', handleDown);
-        window.addEventListener('touchstart', (e) => { handleDown(e); e.preventDefault(); }, {passive: false});
+        window.addEventListener('touchstart', (e) => { handleDown(e); }, {passive: false});
         window.addEventListener('mouseup', () => isPressing = false);
         window.addEventListener('touchend', () => isPressing = false);
         
