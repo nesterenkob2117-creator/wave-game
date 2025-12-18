@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wave - by MAKSYM Nesterenko (Mobile Support)</title>
+    <style>
+        :root { --theme-color: #00fff2; }
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', sans-serif; user-select: none; touch-action: none; }
+        canvas { display: block; }
+        
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(0, 0, 0, 0.9); z-index: 10;
+        }
+
+        .author-tag { color: rgba(255, 255, 255, 0.5); font-size: 14px; letter-spacing: 4px; text-transform: uppercase; margin-bottom: 5px; }
+        h1 { color: white; font-size: 60px; margin: 0 0 20px 0; text-shadow: 0 0 20px rgba(255,255,255,0.2); letter-spacing: 10px; }
+
+        .btn {
+            padding: 12px 25px; font-size: 14px; color: #fff; background: rgba(255,255,255,0.05);
+            border: 2px solid white; cursor: pointer; transition: 0.3s; text-transform: uppercase; margin: 5px;
+            border-radius: 4px;
+        }
+
+        .btn:hover { background: white; color: black; }
+        .btn.active { background: var(--theme-color); color: #000; border-color: var(--theme-color); box-shadow: 0 0 15px var(--theme-color); }
+
+        /* Интерфейс редактора */
+        #editor-ui {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: none; gap: 5px; background: rgba(0,0,0,0.85); padding: 12px; 
+            border-radius: 50px; border: 1px solid rgba(255,255,255,0.2); align-items: center;
+            flex-wrap: wrap; justify-content: center; width: 90%; max-width: 600px;
+        }
+
+        /* Кнопки навигации для мобильного редактора */
+        #mobile-nav {
+            position: absolute; top: 50%; width: 100%; display: none; justify-content: space-between;
+            padding: 0 20px; box-sizing: border-box; pointer-events: none; transform: translateY(-50%);
+        }
+        .nav-btn {
+            width: 70px; height: 70px; background: rgba(255,255,255,0.1); border: 2px solid white;
+            color: white; border-radius: 50%; pointer-events: auto; font-size: 30px; display: flex;
+            align-items: center; justify-content: center;
+        }
+
+        #ui { position: absolute; top: 20px; left: 20px; color: white; font-size: 24px; display: none; }
+        
+        /* Настройки мобильного режима */
+        .mobile-mode-active .btn { padding: 20px 40px; font-size: 18px; }
+        .mobile-mode-active h1 { font-size: 50px; }
+    </style>
+</head>
+<body oncontextmenu="return false;">
+
+    <div id="ui">SCORE: <span id="score">0</span></div>
+
+    <div id="overlay">
+        <div id="win-text" style="display:none; color:var(--theme-color); font-size:30px; margin-bottom:20px; text-shadow:0 0 20px var(--theme-color);">LEVEL COMPLETE!</div>
+        <div class="author-tag">by MAKSYM Nesterenko</div>
+        <h1>WAVE</h1>
+        
+        <div style="margin-bottom: 20px; text-align: center;">
+            <p style="color:white; font-size:12px; margin-bottom:5px;">ЦВЕТ:</p>
+            <input type="color" id="waveColor" value="#00fff2" style="width:50px; height:50px; border:none; background:none;">
+        </div>
+
+        <div style="display:flex; flex-wrap: wrap; justify-content: center;">
+            <button class="btn" onclick="startGame(false)">Random</button>
+            <button class="btn" onclick="startEditor()">Editor</button>
+            <button id="mobileToggle" class="btn" onclick="toggleMobileMode()" style="border-color: #ffcc00;">Mobile: OFF</button>
+        </div>
+        <button id="playCustomBtn" class="btn" style="display:none; border-color:#ffcc00; color:#ffcc00; margin-top:15px;" onclick="startGame(true)">Play My Level</button>
+    </div>
+
+    <div id="mobile-nav">
+        <div class="nav-btn" onpointerdown="moveCam(-1)" onpointerup="stopCam()">←</div>
+        <div class="nav-btn" onpointerdown="moveCam(1)" onpointerup="stopCam()">→</div>
+    </div>
+
+    <div id="editor-ui">
+        <button id="tool-block" class="btn active" onclick="setTool('block')">Block</button>
+        <button id="tool-finish" class="btn" onclick="setTool('finish')">Finish</button>
+        <button id="tool-eraser" class="btn" style="border-color: #ff5555;" onclick="setTool('eraser')">Eraser</button>
+        <button class="btn" onclick="undoLast()">Undo</button>
+        <button class="btn" onclick="exitEditor()" style="background: green;">Save</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const overlay = document.getElementById('overlay');
+        const winText = document.getElementById('win-text');
+        const editorUI = document.getElementById('editor-ui');
+        const mobileNav = document.getElementById('mobile-nav');
+        const ui = document.getElementById('ui');
+        const colorPicker = document.getElementById('waveColor');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let mode = 'MENU', tool = 'block', score = 0, isPressing = false, frame = 0, cameraX = 0;
+        let isMobile = false, camMoveDir = 0;
+        let themeColor = colorPicker.value;
+        const player = { x: 150, y: 0, trail: [] };
+        const SPEED_X = 4.5, SPEED_Y = 4.0;
+
+        let obstacles = [], customLevel = [], finishLineX = null;
+
+        colorPicker.oninput = () => {
+            themeColor = colorPicker.value;
+            document.documentElement.style.setProperty('--theme-color', themeColor);
+        };
+
+        function toggleMobileMode() {
+            isMobile = !isMobile;
+            document.body.classList.toggle('mobile-mode-active', isMobile);
+            document.getElementById('mobileToggle').innerText = isMobile ? "Mobile: ON" : "Mobile: OFF";
+            document.getElementById('mobileToggle').classList.toggle('active', isMobile);
+        }
+
+        function setTool(t) {
+            tool = t;
+            document.getElementById('tool-block').classList.toggle('active', t === 'block');
+            document.getElementById('tool-finish').classList.toggle('active', t === 'finish');
+            document.getElementById('tool-eraser').classList.toggle('active', t === 'eraser');
+        }
+
+        function startEditor() {
+            mode = 'EDITOR'; cameraX = 0; overlay.style.display = 'none'; 
+            editorUI.style.display = 'flex';
+            if(isMobile) mobileNav.style.display = 'flex';
+            winText.style.display = 'none';
+        }
+
+        function exitEditor() {
+            mode = 'MENU'; overlay.style.display = 'flex'; 
+            editorUI.style.display = 'none';
+            mobileNav.style.display = 'none';
+            document.getElementById('playCustomBtn').style.display = (customLevel.length > 0 || finishLineX) ? 'block' : 'none';
+        }
+
+        function moveCam(dir) { camMoveDir = dir; }
+        function stopCam() { camMoveDir = 0; }
+
+        function undoLast() { if(customLevel.length > 0) customLevel.pop(); else finishLineX = null; }
+
+        function removeAt(x, y) {
+            const worldX = x + cameraX;
+            customLevel = customLevel.filter(obs => !(worldX > obs.x && worldX < obs.x + 60 && (y < obs.topH || y > obs.botY)));
+            if (finishLineX && Math.abs(worldX - finishLineX) < 40) finishLineX = null;
+        }
+
+        // Обработка кликов/тапов
+        const handleDown = (e) => {
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const isRightClick = e.button === 2;
+
+            if (mode === 'GAME') isPressing = true;
+            if (mode === 'EDITOR') {
+                if(clientY > canvas.height - 120) return;
+                if (isRightClick || tool === 'eraser') {
+                    removeAt(clientX, clientY);
+                } else if (tool === 'block') {
+                    customLevel.push({ x: clientX + cameraX, topH: clientY - 130, botY: clientY + 130, passed: false });
+                    customLevel.sort((a, b) => a.x - b.x);
+                } else if (tool === 'finish') {
+                    finishLineX = clientX + cameraX;
+                }
+            }
+        };
+
+        window.addEventListener('mousedown', handleDown);
+        window.addEventListener('touchstart', (e) => { handleDown(e); e.preventDefault(); }, {passive: false});
+        window.addEventListener('mouseup', () => isPressing = false);
+        window.addEventListener('touchend', () => isPressing = false);
+        
+        let keys = {};
+        window.onkeydown = (e) => { 
+            keys[e.code] = true; 
+            if(e.code === 'Space' && mode === 'GAME') isPressing = true; 
+        };
+        window.onkeyup = (e) => { 
+            keys[e.code] = false; 
+            if(e.code === 'Space') isPressing = false; 
+        };
+
+        function startGame(useCustom) {
+            mode = 'GAME'; score = 0; scoreElement.innerText = "0"; player.y = canvas.height/2; player.trail = [];
+            winText.style.display = 'none';
+            if (useCustom) {
+                obstacles = customLevel.map(obj => ({...obj, passed: false}));
+                this.levelFinishX = finishLineX;
+            } else {
+                obstacles = []; this.levelFinishX = null;
+            }
+            overlay.style.display = 'none'; ui.style.display = 'block';
+        }
+
+        function update() {
+            if (mode === 'EDITOR') {
+                if (keys['ArrowRight'] || camMoveDir === 1) cameraX += 15;
+                if (keys['ArrowLeft'] || camMoveDir === -1) cameraX = Math.max(0, cameraX - 15);
+                return;
+            }
+            if (mode === 'GAME') {
+                frame++;
+                player.y += isPressing ? -SPEED_Y : SPEED_Y;
+                player.trail.push({x: player.x, y: player.y});
+                if (player.trail.length > 50) player.trail.shift();
+
+                if (!this.levelFinishX && (obstacles.length === 0 || obstacles[obstacles.length-1].x < canvas.width + 500)) {
+                    const lastX = obstacles.length > 0 ? obstacles[obstacles.length-1].x : canvas.width;
+                    const topH = Math.random() * (canvas.height - 400) + 100;
+                    obstacles.push({ x: lastX + 450, topH: topH, botY: topH + 260, passed: false });
+                }
+
+                if(this.levelFinishX) {
+                    this.levelFinishX -= SPEED_X;
+                    if(player.x > this.levelFinishX) {
+                        mode = 'MENU'; winText.style.display = 'block'; overlay.style.display = 'flex'; ui.style.display = 'none';
+                    }
+                }
+
+                obstacles.forEach(obs => {
+                    obs.x -= SPEED_X;
+                    if (player.x + 10 > obs.x && player.x - 10 < obs.x + 60) {
+                        if (player.y - 5 < obs.topH || player.y + 5 > obs.botY) {
+                            mode = 'MENU'; overlay.style.display = 'flex'; ui.style.display = 'none';
+                        }
+                    }
+                    if (!obs.passed && obs.x < player.x) { obs.passed = true; score++; scoreElement.innerText = score; }
+                });
+                if (player.y < 0 || player.y > canvas.height) { mode = 'MENU'; overlay.style.display = 'flex'; ui.style.display = 'none'; }
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const offset = (mode === 'EDITOR') ? cameraX : (frame * SPEED_X);
+            ctx.strokeStyle = '#111';
+            for(let i = 0; i < canvas.width + 60; i += 60) {
+                ctx.beginPath(); ctx.moveTo(i - (offset % 60), 0); ctx.lineTo(i - (offset % 60), canvas.height); ctx.stroke();
+            }
+
+            const list = (mode === 'EDITOR') ? customLevel : obstacles;
+            list.forEach(obs => {
+                const dx = (mode === 'EDITOR') ? (obs.x - cameraX) : obs.x;
+                ctx.fillStyle = '#111'; ctx.strokeStyle = themeColor; ctx.lineWidth = 2;
+                ctx.fillRect(dx, 0, 60, obs.topH); ctx.strokeRect(dx, 0, 60, obs.topH);
+                ctx.fillRect(dx, obs.botY, 60, canvas.height - obs.botY); ctx.strokeRect(dx, obs.botY, 60, canvas.height - obs.botY);
+            });
+
+            const fx = (mode === 'EDITOR') ? (finishLineX - cameraX) : this.levelFinishX;
+            if(fx) {
+                ctx.fillStyle = themeColor; ctx.globalAlpha = 0.3; ctx.fillRect(fx, 0, 50, canvas.height);
+                ctx.globalAlpha = 1; ctx.strokeStyle = 'white'; ctx.lineWidth = 5; ctx.strokeRect(fx, 0, 50, canvas.height);
+            }
+
+            if (mode === 'GAME') {
+                ctx.shadowBlur = 15; ctx.shadowColor = themeColor; ctx.strokeStyle = themeColor; ctx.lineWidth = 4;
+                ctx.beginPath();
+                player.trail.forEach((p, i) => { p.x -= SPEED_X; if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+                ctx.stroke(); ctx.shadowBlur = 0;
+                ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(isPressing ? -0.4 : 0.4);
+                ctx.fillStyle = "white"; ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-12, -10); ctx.lineTo(-12, 10); ctx.closePath(); ctx.fill(); ctx.restore();
+            }
+        }
+        function loop() { update(); draw(); requestAnimationFrame(loop); }
+        loop();
+    </script>
+</body>
+</html>
